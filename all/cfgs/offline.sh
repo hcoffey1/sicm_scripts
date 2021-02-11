@@ -52,7 +52,7 @@ function guided_compress {
     setup_compress
 
     #Set up bpftrace probes
-    bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/bpftrace.logA
+    bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/bpftrace.log &
     bpft_pid=$!
 
     eval "${COMMAND}" &>> ${DIR}/run_sh_stdout.txt

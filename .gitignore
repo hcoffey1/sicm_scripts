@@ -5,3 +5,4 @@ all/memreserve
 benchmarks
 *.o
 __pycache__
+*.swp
