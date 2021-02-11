@@ -51,7 +51,14 @@ function guided_compress {
     pcm_background "${DIR}"
     setup_compress
 
+    #Set up bpftrace probes
+    bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/bpftrace.logA
+    bpft_pid=$!
+
     eval "${COMMAND}" &>> ${DIR}/run_sh_stdout.txt
+
+    #Terminate bpftrace probes
+    kill -2 $bpft_pid
 
     unsetup_compress
     numastat_kill
