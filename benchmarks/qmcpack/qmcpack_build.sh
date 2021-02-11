@@ -7,13 +7,6 @@
 # lapack lapack-devel blas blas-devel centos-release-scl devtoolset-7-gcc* boost169 boost169-devel
 # then had to do: . /opt/rh/devtoolset-7/enable
 
-# On Debian 10.0, CMake's FindHDF5.cmake is broken. Therefore, I had to comment out lines 204-206 of:
-# /usr/share/cmake-3.13/Modules/FindHDF5.cmake
-# The lines were:
-#    try_compile(${success} ${scratch_directory} ${test_file}
-#      COPY_FILE ${scratch_directory}/compiler_has_h5_c
-#    )
-
 #. /opt/rh/devtoolset-7/enable
 source $SCRIPTS_DIR/all/bench_build.sh
 bench_build c "" ""
@@ -35,6 +28,7 @@ cmake -DBUILD_UNIT_TESTS=False \
       -DBUILD_SANDBOX=False \
       -DBUILD_QMCTOOLS=False \
       -DQMC_SYMLINK_TEST_FILES=False \
+      -DCMAKE_SYSTEM_NAME="Linux" \
       -DQMC_MPI=False \
       -DQMC_ADIOS=False \
       -DENABLE_PHDF5=False \
@@ -58,4 +52,4 @@ cmake -DBUILD_UNIT_TESTS=False \
 #       -DBoost_INCLUDE_DIR="${BOOST_INCLUDE_DIRS}" \
 make -j $(nproc --all)
 mkdir -p ../../run
-cp bin/qmcpack ../../run/qmcpack
+cp bin/qmcpack ../../run/qmcpack%  

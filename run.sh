@@ -17,25 +17,26 @@ elif [[ "$(hostname)" = "canata" ]]; then
 elif [[ "$(hostname)" = "SystemID-817" ]]; then
   # Intel's SDP machine with CLX and AEP
   export OMP_NUM_THREADS="40"
-elif [[ "$(hostname)" = "chile" ]]; then
-  export OMP_NUM_THREADS="32"
+elif [[ "$(hostname)" = "brazil.eecs.utk.edu" ]]; then
+  # Intel's SDP machine with CLX and AEP
+  export OMP_NUM_THREADS="12"
 else
   # KNL
   export OMP_NUM_THREADS="256"
 fi
 export SH_MAX_THREADS=`expr ${OMP_NUM_THREADS} + 1`
-export JE_MALLOC_CONF="oversize_threshold:0,background_thread:true,max_background_threads:1"
 
 source $SCRIPTS_DIR/all/args.sh
 source $SCRIPTS_DIR/all/tools.sh
 source $SCRIPTS_DIR/all/cfgs/firsttouch.sh
+source $SCRIPTS_DIR/all/cfgs/sim.sh
 source $SCRIPTS_DIR/all/cfgs/profile.sh
-source $SCRIPTS_DIR/all/cfgs/profile_latency.sh
+#source $SCRIPTS_DIR/all/cfgs/profile_latency.sh
 source $SCRIPTS_DIR/all/cfgs/profile_cache_miss.sh
 source $SCRIPTS_DIR/all/cfgs/offline.sh
 source $SCRIPTS_DIR/all/cfgs/online.sh
 source $SCRIPTS_DIR/all/cfgs/multi_iter.sh
-source $SCRIPTS_DIR/all/cfgs/pagedrift.sh
+#source $SCRIPTS_DIR/all/cfgs/pagedrift.sh
 
 if [[ "$(hostname)" = "JF1121-080209T" ]]; then
 
@@ -85,17 +86,6 @@ elif [[ "$(hostname)" = "canata" ]]; then
     exit
   fi
   
-elif [[ "$(hostname)" = "chile" ]]; then
-
-  if [[ $NUM_NUMA_NODES = 2 ]]; then
-    export PLATFORM_COMMAND="sudo -E /usr/bin/time -v numactl --preferred=0 numactl --membind=0,1 "
-    export SH_UPPER_NODE="0"
-    export SH_LOWER_NODE="1"
-  else
-    echo "COULDN'T DETECT HARDWARE CONFIGURATION. ABORTING."
-    exit
-  fi
-
 elif [[ "$(hostname)" = "SystemID-817" ]]; then
 
   # Intel's CLX SDP machine
@@ -111,6 +101,12 @@ elif [[ "$(hostname)" = "SystemID-817" ]]; then
     echo "COULDN'T DETECT HARDWARE CONFIGURATION. ABORTING."
     exit
   fi
+
+elif [[ "$(hostname)" = "brazil.eecs.utk.edu" ]]; then
+
+  export PLATFORM_COMMAND="sudo -E env time -v "
+  export SH_UPPER_NODE="0"
+  export SH_LOWER_NODE="0"
 
 else
 
@@ -148,40 +144,37 @@ fi
 # For the PCM tools
 sudo modprobe msr
 
-# Get SICM and deps into the environment
-#export LD_LIBRARY_PATH="${SICM_PREFIX}/lib:${LD_LIBRARY_PATH}"
-
-# We need this for QMCPACK because otherwise it will link to an unpatched Flang, which will
-# cause subtle issues due to their inexplicably overriding lots of NUMA functions to do nothing.
-# It shouldn't adversely affect any other benchmarks.
-#export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$(spack location -i flang-patched)/lib"
-
 for BENCH_INDEX in ${!BENCHES[*]}; do
   for CONFIG_INDEX in ${!CONFIGS[*]}; do
     BENCH="${BENCHES[${BENCH_INDEX}]}"
-    BENCH_COMMAND="${BENCH_COMMANDS[${BENCH_INDEX}]}"
     CONFIG="${CONFIGS[${CONFIG_INDEX}]}"
     ARGS_SPACES="${CONFIG_ARGS[$CONFIG_INDEX]}"
     FULL_CONFIG="${FULL_CONFIGS[${CONFIG_INDEX}]}"
 
     # Set a function to do arbitrary commands depending on the benchmark
     # and benchmark size.
-    export PRERUN="${BENCH}_prerun"
-    export SETUP="${BENCH}_setup"
+    #
+    if [[ "${CPU2017_BENCHES[@]}" =~ "${BENCH}" ]]; then
+      MYBENCH=`echo ${BENCH} | sed -e 's/\./_/'`
+      export PRERUN="${MYBENCH}_prerun"
+      export SETUP="${MYBENCH}_setup"
+    else 
+      export PRERUN="${BENCH}_prerun"
+      export SETUP="${BENCH}_setup"
+    fi
 
     # Create the results directory for this experiment,
     # and pass that to the BASH function
+    #
     DIRECTORY="${RESULTS_DIR}/${BENCH}/${SIZE}/${FULL_CONFIG}"
     if [[ ! ${CONFIG} == *"manual"* ]]; then
       rm -rf ${DIRECTORY}
+      mkdir -p ${DIRECTORY}
     fi
-    mkdir -p ${DIRECTORY}
 
     # We want SICM to output its configuration for debugging
     export SH_LOG_FILE="${DIRECTORY}/config.txt"
     ulimit -c unlimited
-    ulimit -s unlimited
-    ulimit -S -s unlimited
 
     # Print out information about this run
     echo "Running experiment:"
@@ -191,12 +184,60 @@ for BENCH_INDEX in ${!BENCHES[*]}; do
 
     # Execute the BASH function with arguments
     export BASEDIR="${DIRECTORY}"
-    export COMMAND="${PLATFORM_COMMAND} ${SICM_ENV} ${BENCH_COMMAND}"
+    export COMMAND="./run.sh"
 
-    cd $BENCH_DIR/${BENCH}
-    eval "${SETUP}"
+    cd ${BENCH_DIR}/${BENCH}
+    source ${SCRIPTS_DIR}/benchmarks/${BENCH}/${BENCH}_sizes.sh
+
+    if [[ "${CPU2017_BENCHES[@]}" =~ "${BENCH}" ]]; then
+      rm -rf run
+      cp -r run-${SIZE} run
+      cp src/${BENCH_EXE} run/
+    fi
+
+    echo -en '#!/bin/bash\n\n' > run/run.sh
+
+    COMMAND_VAR="${SIZE}_COMMANDS[@]"
+    BENCH_COMMANDS=("${!COMMAND_VAR}")
+    for RUN in $(seq 0 $(( ${#BENCH_COMMANDS[@]} - 1 )) ); do
+
+      PIN_BASE_COMMAND="${PIN_COMMANDS[${CONFIG}]}"
+      if [[ -z ${PIN_BASE_COMMAND} ]]; then
+        MY_COMMAND="${PLATFORM_COMMAND} ${SICM_ENV} \
+                    ${BENCH_COMMANDS[${RUN}]} \
+                    > stdout${RUN}.txt 2> stderr${RUN}.txt"
+      else
+        PIN_RUN_COMMAND=$(eval "echo ${PIN_BASE_COMMAND}")
+        # parse arguments for pin command
+        
+        MY_COMMAND="${PLATFORM_COMMAND} ${PIN_RUN_COMMAND} -- ${SICM_ENV} \
+                    ${BENCH_COMMANDS[${RUN}]} \
+                    > stdout${RUN}.txt 2> stderr${RUN}.txt"
+      fi
+
+      if [[ ${PARALLEL} = true ]]; then
+        MY_COMMAND=${MY_COMMAND}" &"
+      fi
+
+      echo ${MY_COMMAND} >> run/run.sh
+    done
+
+    END_RUN="\n"
+    if [[ ${PARALLEL} ]]; then
+      END_RUN="wait${END_RUN}"
+    fi
+    echo -en "${END_RUN}" >> run/run.sh
+    
+    eval "./${SETUP}"
     cd $BENCH_DIR/${BENCH}/run
-    ( eval "$CONFIG ${ARGS_SPACES}" )
+    chmod +x run.sh
+
+    SIM_CONFIG="${SIM_CONFIGS[${CONFIG}]}"
+    if [[ -z ${SIM_CONFIG} ]]; then
+      ( eval "$CONFIG ${ARGS_SPACES}" )
+    else
+      ( eval "$SIM_CONFIG ${ARGS_SPACES}" )
+    fi
 
   done
 done

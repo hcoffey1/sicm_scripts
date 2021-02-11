@@ -1,0 +1,77 @@
+Running experiment:
+  Benchmark: 'snap'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+-1
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+-1
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+-1
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '256 10000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '1024 5000'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '1024 1024'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1
+Running experiment:
+  Benchmark: 'graph500'
+  Configuration: 'profile_all_and_pagemap'
+  Configuration arguments: '1024 1024'
+./run.sh: line 231: ./graph500_setup: No such file or directory
+-1

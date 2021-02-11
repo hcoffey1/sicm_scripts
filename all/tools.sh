@@ -3,26 +3,12 @@
 pcm_pid=0
 numastat_pid=0
 memreserve_pid=0
-export RESERVED_BYTES="0"
 
 #############
 # drop_caches
 #############
-function drop_caches_start {
+function drop_caches {
   echo 3 | sudo tee /proc/sys/vm/drop_caches &>/dev/null
-  echo 0 | sudo tee /sys/kernel/mm/ksm/merge_across_nodes &>/dev/null
-  #sudo sysctl vm.overcommit_memory=1 &>/dev/null
-  #sudo sysctl vm.extfrag_threshold=1000 &>/dev/null
-  #sudo sysctl vm.compact_memory=1 &>/dev/null
-  #sudo sysctl vm.extfrag_threshold=0 &>/dev/null
-  sleep 5
-}
-
-function drop_caches_end {
-  echo 3 | sudo tee /proc/sys/vm/drop_caches &>/dev/null
-  #sudo sysctl vm.overcommit_memory=1 &>/dev/null
-  #sudo sysctl vm.extfrag_threshold=1000 &>/dev/null
-  #sudo sysctl vm.compact_memory=1 &>/dev/null
   sleep 5
 }
 
@@ -53,7 +39,7 @@ function numastat_kill {
 # First arg is directory to write to
 function pcm_background {
   rm -f $1/pcm-memory.txt
-  sudo ${SCRIPTS_DIR}/tools/pcm/pcm-memory.x -pmm &> $1/pcm-memory.txt &
+  sudo ${SCRIPTS_DIR}/tools/pcm/pcm-memory.x &> $1/pcm-memory.txt &
   pcm_pid=$!
 }
 function pcm_kill {
@@ -70,11 +56,10 @@ function pcm_kill {
 # Third arg is the NUMA node to reserve memory on
 function memreserve {
     ${SCRIPTS_DIR}/all/memreserve ${3} ${2} \
-      &>> ${1}/memreserve.txt &
+      &>> $1/memreserve.txt &
     memreserve_pid="$!"
 
     sleep 60
-#    export RESERVED_BYTES=`${SCRIPTS_DIR}/all/stat --single="${1}" --metric=num_reserved_bytes`
 }
 
 function memreserve_kill {
@@ -86,28 +71,22 @@ function memreserve_kill {
   fi
 }
 
-############
-# per_node_max
-############
-# One argument: the amount that should be allowed on node 0.
-function per_node_max {
-  RESERVE_BYTES="${1}"
-  echo "+cpuset" | sudo tee /sys/fs/cgroup/cgroup.subtree_control &> /dev/null
-  sudo rmdir /sys/fs/cgroup/0 &> /dev/null
-  sudo mkdir /sys/fs/cgroup/0 &> /dev/null
-  if [ "${2}" = "real" ]; then
-    echo "${RESERVE_BYTES}" | sudo tee /sys/fs/cgroup/0/memory.node0_max &> /dev/null
-  fi
-  sh -c "echo \$$ | sudo tee /sys/fs/cgroup/0/cgroup.procs && ${COMMAND}" /dev/null
+function setup_compress {
+  echo Y | sudo tee /sys/module/zswap/parameters/enabled &>/dev/null
+  echo zsmalloc | sudo tee /sys/module/zswap/parameters/zpool &>/dev/null
+  echo lz4 | sudo tee /sys/module/zswap/parameters/compressor &>/dev/null
+  echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled &>/dev/null
+
+  sudo mount -t tmpfs none /sys/fs/cgroup
+  sudo mkdir /sys/fs/cgroup/unified
+  sudo mount -t cgroup2 none /sys/fs/cgroup/unified
+  sudo mkdir /sys/fs/cgroup/unified/0
+  echo "+memory" | sudo tee /sys/fs/cgroup/unified/cgroup.subtree_control &>/dev/null
 }
 
-############
-# pagedrift
-############
-# First arg is number of seconds to sleep
-# Second arg is the time to profile for
-# Third arg is the sampling frequency
-# Fourth arg is the PID of the process to use pagedrift on 
-function pagedrift_tool {
-  bash -c "cd ${SCRIPTS_DIR}/tools/pagedrift; sleep ${2}; sudo -E python2 ./pagedrift.py --perf_exe ${SCRIPTS_DIR}/tools/linux/tools/perf/perf  -d ${1} -p ${5} -n ${SH_UPPER_NODE} --time ${3} --freq ${4} -r" &> ${1}/pagedrift.txt
+function unsetup_compress {
+  sudo rmdir /sys/fs/cgroup/unified/0 > /dev/null 2>&1
+  sudo umount /sys/fs/cgroup/unified > /dev/null 2>&1
+  sudo rmdir /sys/fs/cgroup/unified > /dev/null 2>&1
+  sudo umount /sys/fs/cgroup
 }

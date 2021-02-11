@@ -28,27 +28,32 @@ function bench_build {
   export FC="${SICM_PREFIX}/bin/flang"
   export F77="${SICM_PREFIX}/bin/flang"
   export F90="${SICM_PREFIX}/bin/flang"
-
+  
   if [ "$1" = "fort" ]; then
-    export LD_LINKER="flang ${SICM_COMPILER_ARGS} $2 -Wno-unused-command-line-argument -Wl,-rpath,${SICM_PREFIX}/lib -L${SICM_PREFIX}/lib -lflang -lflangrti -gdwarf-3 -ljemalloc"
+    export LD_LINKER="flang $2 -Wno-unused-command-line-argument -Wl,-rpath,${SICM_PREFIX}/lib -L${SICM_PREFIX}/lib -lflang -lflangrti -g"
   elif [ "$1" = "c" ]; then
-    export LD_LINKER="clang++ ${SICM_COMPILER_ARGS} $2 -Wno-unused-command-line-argument -L${SICM_PREFIX}/lib -lflang -lflangrti -Wl,-rpath,${SICM_PREFIX}/lib -lsicm_runtime -gdwarf-3 -ldl -ljemalloc"
+    export LD_LINKER="clang++ $2 -Wno-unused-command-line-argument -L${SICM_PREFIX}/lib -lpgmath -lflang -lflangrti -Wl,-rpath,${SICM_PREFIX}/lib -g"
   else
     echo "No linker specified. Aborting."
     exit
   fi
+    
+  #HC
+  export LD_FLAGS="$2 -L${SICM_PREFIX}/lib -lpgmath -Wl,-rpath,${SICM_PREFIX}/lib -g"
+  #export LD_FLAGS="$2 -L${SICM_PREFIX}/lib -lpgmath -lflang -lflangrti -Wl,-rpath,${SICM_PREFIX}/lib -g"
+  export MPIC_COMPILER="mpicc $3 -march=x86-64 -g -I${SICM_PREFIX}/include"
 
   # Define the variables for the compiler wrappers
-  export LD_COMPILER="clang++ -Wno-unused-command-line-argument -march=x86-64 -gdwarf-3 -L${SICM_PREFIX}/lib -lsicm_runtime -fopenmp" # Compiles from .bc -> .o
-  export CXX_COMPILER="clang++ $3 -Wno-unused-command-line-argument -march=x86-64 -gdwarf-3 -I${SICM_PREFIX}/include -fopenmp"
-  export FORT_COMPILER="flang $3  -Mpreprocess -Wno-unused-command-line-argument -march=x86-64 -I${SICM_PREFIX}/include -L${SICM_PREFIX}/lib -lflang -lflangrti -gdwarf-3 -fopenmp"
-  export C_COMPILER="clang $3 -Wno-unused-command-line-argument -march=x86-64 -gdwarf-3 -I${SICM_PREFIX}/include -fopenmp"
+  export LD_COMPILER="clang++ -Wno-unused-command-line-argument -march=x86-64 -g -L${SICM_PREFIX}/lib" # Compiles from .bc -> .o
+  export CXX_COMPILER="clang++ $3  -Wno-unused-command-line-argument -march=x86-64 -g -I${SICM_PREFIX}/include"
+  export FORT_COMPILER="flang $3  -Mpreprocess -Wno-unused-command-line-argument -march=x86-64 -I${SICM_PREFIX}/include -L${SICM_PREFIX}/lib -lflang -lflangrti -g"
+  export C_COMPILER="clang  $3 -Wno-unused-command-line-argument -march=x86-64 -g -I${SICM_PREFIX}/include"
   export LLVMLINK="llvm-link"
   export LLVMOPT="opt"
 
   # Make sure the Makefiles find our wrappers
-  export COMPILER_WRAPPER="compiler_wrapper.sh ${SICM_COMPILER_ARGS} "
-  export LD_WRAPPER="ld_wrapper.sh ${SICM_COMPILER_ARGS} "
+  export COMPILER_WRAPPER="compiler_wrapper.sh "
+  export LD_WRAPPER="ld_wrapper.sh "
   export PREPROCESS_WRAPPER="clang -E -x c -P "
   export AR_WRAPPER="ar_wrapper.sh "
   export RANLIB_WRAPPER="ranlib_wrapper.sh "

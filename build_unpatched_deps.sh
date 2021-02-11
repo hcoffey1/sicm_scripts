@@ -18,7 +18,8 @@ mkdir -p src
 cd src
 if [ ! -d "flang" ]; then
   git clone https://github.com/flang-compiler/flang.git flang
-  (cd flang && git checkout flang_20180921)
+  (cd flang && git checkout flang_20201023)
+  #(cd flang && git checkout flang_20180921)
 fi
 
 # Common CMake arguments for the Flang toolchain

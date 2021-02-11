@@ -3,9 +3,64 @@
 source ./all/vars.sh
 
 # Arguments
-GETOPT_OUTPUT=`getopt -o ebcsagumipnrtlxyfG --long site:,eps,bench:,config:,graph_title:,size:,args:,x_label:,y_label:,groupsize:,groupname:,label:,metric:,iters:,profile:,node:,baseconfig:,base_args:,filename: -n 'args.sh' -- "$@"`
+GETOPT_OUTPUT=`getopt -o ebcsagumipnrtlxyfGP --long site:,parallel,eps,bench:,config:,graph_title:,size:,args:,x_label:,y_label:,groupsize:,groupname:,label:,metric:,iters:,profile:,node:,baseconfig:,base_args:,filename: -n 'args.sh' -- "$@"`
 if [ $? != 0 ] ; then echo "'getopt' failed. Aborting." >&2 ; exit 1 ; fi
 eval set -- "$GETOPT_OUTPUT"
+
+declare -a CPU2017_BENCHES=(
+  "500.perlbench_r"
+  "502.gcc_r"
+  "503.bwaves_r"
+  "505.mcf_r"
+  "507.cactuBSSN_r"
+  "508.namd_r"
+  "510.parest_r"
+  "511.povray_r"
+  "519.lbm_r"
+  "520.omnetpp_r"
+  "521.wrf_r"
+  "523.xalancbmk_r"
+  "525.x264_r"
+  "526.blender_r"
+  "527.cam4_r"
+  "531.deepsjeng_r"
+  "538.imagick_r"
+  "541.leela_r"
+  "544.nab_r"
+  "548.exchange2_r"
+  "549.fotonik3d_r"
+  "554.roms_r"
+  "557.xz_r"
+  "600.perlbench_s"
+  "602.gcc_s"
+  "603.bwaves_s"
+  "605.mcf_s"
+  "607.cactuBSSN_s"
+  "619.lbm_s"
+  "620.omnetpp_s"
+  "621.wrf_s"
+  "623.xalancbmk_s"
+  "625.x264_s"
+  "627.cam4_s"
+  "628.pop2_s"
+  "631.deepsjeng_s"
+  "638.imagick_s"
+  "641.leela_s"
+  "644.nab_s"
+  "648.exchange2_s"
+  "649.fotonik3d_s"
+  "654.roms_s"
+  "657.xz_s"
+)
+
+declare -a CORAL_BENCHES=(
+  "lulesh",
+  "amg",
+  "snap",
+  "qmcpack"
+)
+
+export ALL_BENCHES=("${CPU2017_BENCHES}" "${CORAL_BENCHES}")
 
 # Handle arguments
 NODE=""
@@ -27,6 +82,7 @@ GROUPNAMES=()
 LABELS=()
 SITE=""
 EPS=false
+PARALLEL=false
 while true; do
   case "$1" in
     -b | --bench ) BENCHES+=("$2"); shift 2;;
@@ -42,18 +98,17 @@ while true; do
     -s | --size ) SIZE="$2"; shift 2;;
     -m | --metric ) METRIC="$2"; shift 2;;
     -i | --iters ) ITERS="$2"; shift 2;;
-    -p | --profile ) PROFILE_DIR="$2"; shift 2;;
+    -p | --profile ) PROFILE="$2"; shift 2;;
     -n | --node ) NODE="$2"; shift 2;;
     -f | --filename ) FILENAME="$2"; shift 2;;
     -G | --graph_title ) GRAPH_TITLE="$2"; shift 2;;
-    -e | --eps ) EPS=true; shift 1;;
     -z | --site ) SITE="$2"; shift 2;;
+    -e | --eps ) EPS=true; shift 1;;
+    -P | --parallel ) PARALLEL=true; shift 1;;
     -- ) shift; break;;
     * ) break;;
   esac
 done
-
-export "PROFILE_DIR=${PROFILE_DIR}"
 
 MAX_ITER=$(echo "$ITERS - 1" | bc)
 
@@ -108,28 +163,15 @@ if [[ ! -z "${BASECONFIG}" ]]; then
   FULL_BASECONFIG="${BASECONFIG}:${BASECONFIG_ARGS_UNDERSCORES}"
 fi
 
-export LD_LIBRARY_PATH_TMP="${SICM_PREFIX}/lib:${SICM_PREFIX}/lib/clang/7.1.0/lib/:${LD_LIBRARY_PATH}"
-export LD_PRELOAD_TMP="${SICM_PREFIX}/lib/libsicm_overrides.so ${SICM_PREFIX}/lib/libsicm_runtime.so ${SICM_PREFIX}/lib/libjemalloc.so"
-export SICM_ENV="env LD_LIBRARY_PATH='${LD_LIBRARY_PATH_TMP}' LD_PRELOAD='${LD_PRELOAD_TMP}'"
-BENCH_COMMANDS=()
-for BENCH in ${BENCHES[@]}; do
-  BENCH_COMMAND=""
-  if [ $BENCH ] && [ $SIZE ]; then
-    source $SCRIPTS_DIR/benchmarks/${BENCH}/${BENCH}_sizes.sh
-    case "$SIZE" in
-      "small" ) BENCH_COMMAND="$SMALL";;
-      "medium" ) BENCH_COMMAND="$MEDIUM";;
-      "large" ) BENCH_COMMAND="$LARGE";;
-      "small_aep" ) BENCH_COMMAND="$SMALL_AEP";;
-      "medium_aep" ) BENCH_COMMAND="$MEDIUM_AEP";;
-      "large_aep" ) BENCH_COMMAND="$LARGE_AEP";;
-      "huge_aep" ) BENCH_COMMAND="$HUGE_AEP";;
-      "small_aep_load" ) BENCH_COMMAND="$SMALL_AEP_LOAD";;
-      "ref" ) BENCH_COMMAND="$REF";;
-      "train" ) BENCH_COMMAND="$TRAIN";;
-      "test" ) BENCH_COMMAND="$TEST";;
-      * ) echo "Unknown size: '$SIZE'. Aborting."; exit 1;;
-    esac
-    BENCH_COMMANDS+=("${BENCH_COMMAND}")
+export SICM_ENV="env LD_LIBRARY_PATH="${SICM_PREFIX}/lib:${LD_LIBRARY_PATH}" LD_PRELOAD='${SICM_PREFIX}/lib/libsicm_overrides.so'"
+
+function common_prerun {
+  if [[ $SH_ARENA_LAYOUT = "SHARED_SITE_ARENAS" ]]; then
+    export JE_MALLOC_CONF="oversize_threshold:0,background_thread:true,max_background_threads:1"
+  elif [[ $SH_ARENA_LAYOUT = "BIG_SMALL_ARENAS" ]]; then
+    export JE_MALLOC_CONF="oversize_threshold:0,background_thread:true,max_background_threads:1"
+  else
+    export JE_MALLOC_CONF="oversize_threshold:0"
   fi
-done
+  #echo "Using JE_MALLOC_CONF='$JE_MALLOC_CONF'."
+}

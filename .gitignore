@@ -2,4 +2,6 @@
 *.OU
 all/stat
 all/memreserve
+benchmarks
 *.o
+__pycache__

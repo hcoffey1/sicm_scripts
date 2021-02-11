@@ -1,11 +1,11 @@
 #!/bin/bash
-#. /opt/rh/devtoolset-7/enable
 source ./all/vars.sh
 
 # SYSTEM_C_COMPILER and SYSTEM_CXX_COMPILER needs to be at least GCC 7.2 to work.
 SICM_DEPS_DIR="$SICM_PREFIX"
 SYSTEM_C_COMPILER="/usr/bin/gcc"
 SYSTEM_CXX_COMPILER="/usr/bin/g++"
+CMAKE_SYSTEM_NAME="Linux"
 
 mkdir -p ${SICM_DEPS_DIR}
 cd ${SICM_DEPS_DIR}
@@ -30,9 +30,13 @@ if [ ! -d "openmp" ]; then
   (cd openmp && git checkout flang_20190329)
 fi
 if [ ! -d "sicm" ]; then
-  git clone https://github.com/lanl/SICM.git sicm
-  (cd sicm && git checkout high_dev)
+  git clone https://github.com/hcoffey1/SICM.git sicm
+  (cd sicm && git checkout madv_compress)
 fi
+#if [ ! -d "sicm" ]; then
+#  git clone https://github.com/hcoffey1/SICM.git sicm
+#  (cd sicm)
+#fi
 if [ ! -d "libpfm4" ]; then
   git clone https://git.code.sf.net/p/perfmon2/libpfm4 libpfm4
 fi
@@ -41,6 +45,7 @@ fi
 INSTALL_PREFIX=${SICM_DEPS_DIR}
 CMAKE_OPTIONS="-DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_SYSTEM_NAME=$CMAKE_SYSTEM_NAME \
   -DLLVM_CONFIG=$INSTALL_PREFIX/bin/llvm-config \
   -DCMAKE_CXX_COMPILER=$INSTALL_PREFIX/bin/clang++ \
   -DCMAKE_C_COMPILER=$INSTALL_PREFIX/bin/clang \
@@ -57,23 +62,23 @@ cd ..
 
 # Build Flang-patched LLVM
 cd llvm
-rm -rf build && mkdir -p build && cd build
-cmake $CMAKE_OPTIONS -DCMAKE_C_COMPILER=${SYSTEM_C_COMPILER} -DCMAKE_CXX_COMPILER=${SYSTEM_CXX_COMPILER} ..
+mkdir -p build && cd build
+cmake $CMAKE_OPTIONS -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME} -DCMAKE_C_COMPILER=${SYSTEM_C_COMPILER} -DCMAKE_CXX_COMPILER=${SYSTEM_CXX_COMPILER} ..
 make -j$(nproc)
 make install
 cd ../..
 
 # Build Flang-patched Clang
 cd flang-driver
-rm -rf build && mkdir -p build && cd build
-cmake $CMAKE_OPTIONS -DCMAKE_C_COMPILER=${SYSTEM_C_COMPILER} -DCMAKE_CXX_COMPILER=${SYSTEM_CXX_COMPILER} ..
+mkdir -p build && cd build
+cmake $CMAKE_OPTIONS -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME} -DCMAKE_C_COMPILER=${SYSTEM_C_COMPILER} -DCMAKE_CXX_COMPILER=${SYSTEM_CXX_COMPILER} ..
 make -j$(nproc)
 make install
 cd ../..
 
 # Build Flang-patched OpenMP
 cd openmp
-rm -rf build && mkdir -p build && cd build
+mkdir -p build && cd build
 cmake $CMAKE_OPTIONS ..
 make -j$(nproc)
 make install
@@ -81,7 +86,7 @@ cd ../..
 
 # Build Flang-patched libpgmath
 cd flang/runtime/libpgmath
-rm -rf build && mkdir -p build && cd build
+mkdir -p build && cd build
 cmake $CMAKE_OPTIONS -DFLANG_LIBOMP=$INSTALL_PREFIX/lib/libomp.so -DFLANG_OPENMP_GPU_NVIDIA=OFF ..
 make -j$(nproc)
 make install

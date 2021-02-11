@@ -1,174 +1,78 @@
 #!/bin/bash
 
 DO_MEMRESERVE=false
-DO_PER_NODE_MAX=false
-DO_PER_NODE_MAX_FAKE=false
 
-function ft {
+function firsttouch {
   eval "${PRERUN}"
 
   for i in $(seq 0 $MAX_ITER); do
     DIR="${BASEDIR}/i${i}"
     mkdir ${DIR}
-    drop_caches_start
+
+    drop_caches
     if [ "$DO_MEMRESERVE" = true ]; then
       memreserve ${DIR} ${NUM_PAGES} ${SH_UPPER_NODE}
     fi
     pcm_background "${DIR}"
     numastat -m &>> ${DIR}/numastat_before.txt
     numastat_background "${DIR}"
-    if [ "$DO_PER_NODE_MAX" = true ]; then
-      per_node_max ${NUM_BYTES} real &> ${DIR}/stdout.txt
-    elif [ "$DO_PER_NODE_MAX_FAKE" = true ]; then
-      per_node_max ${NUM_BYTES} fake &> ${DIR}/stdout.txt
-    else
-      eval "${COMMAND}" &> ${DIR}/stdout.txt
-    fi
+
+    eval "${COMMAND}" &>> ${DIR}/run_sh_stdout.txt
+
     numastat_kill
     pcm_kill
     if [ "$DO_MEMRESERVE" = true ]; then
       memreserve_kill
     fi
-    drop_caches_end
+
+    COMMAND_VAR="${SIZE}_COMMANDS[@]"
+    BENCH_COMMANDS=("${!COMMAND_VAR}")
+    for RUN in $(seq 0 $(( ${#BENCH_COMMANDS[@]} - 1 )) ); do
+      cp "${BENCH_DIR}/${BENCH}/run/stdout${RUN}.txt" ${DIR}/
+      cp "${BENCH_DIR}/${BENCH}/run/stderr${RUN}.txt" ${DIR}/
+    done
   done
 }
 
-function ft_def {
+function firsttouch_default {
   export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  ft $@
+  firsttouch $@
 }
 
-function ft_low_ed {
+function firsttouch_lower_exclusive_device {
   export SH_DEFAULT_NODE="${SH_LOWER_NODE}"
   export SH_ARENA_LAYOUT="EXCLUSIVE_DEVICE_ARENAS"
   export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
+  firsttouch $@
 }
 
-function ft_ed {
+function firsttouch_exclusive_device {
   export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
   export SH_ARENA_LAYOUT="EXCLUSIVE_DEVICE_ARENAS"
   export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
+  firsttouch $@
 }
 
-function ft_e {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="EXCLUSIVE_ARENAS"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_one {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="ONE_ARENA"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_e_debug {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="EXCLUSIVE_ARENAS"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_4ed {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="EXCLUSIVE_FOUR_ARENAS"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_8ed {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="EXCLUSIVE_EIGHT_ARENAS"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_32ed {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="EXCLUSIVE_THIRTYTWO_ARENAS"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_64ed {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="EXCLUSIVE_SIXTYFOUR_ARENAS"
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_low_ss {
+function firsttouch_lower_shared_site {
   export SH_DEFAULT_NODE="${SH_LOWER_NODE}"
   export SH_ARENA_LAYOUT="SHARED_SITE_ARENAS"
-  ft $@
+  firsttouch $@
 }
 
-function ft_ss {
+function firsttouch_shared_site {
   export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
   export SH_ARENA_LAYOUT="SHARED_SITE_ARENAS"
-  ft $@
+  firsttouch $@
 }
 
-function ft_bsl {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="4194304" # 4MB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_bsh {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="536870912" # 16MB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_bshh {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="1073741824" # 16MB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_bsl_debug {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="4194304" # 4MB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_bss {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="1048576" # 4KB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_bss_debug {
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="1048576" # 4KB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  ft $@
-}
-
-function ft_mr_ss {
+function firsttouch_memreserve_shared_site {
   # This just takes a percentage that should be left available on the upper tier
   RATIO=$(echo "${1}/100" | bc -l)
-  CANARY_CFG="ft_def:"
-  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/"
+  CANARY_CFG="firsttouch_shared_site:"
+  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/i0/"
 
   # This is in kilobytes
-  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --single="${CANARY_DIR}" --metric=peak_rss_kbytes`
+  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --metric=peak_rss_kbytes ${CANARY_DIR}`
   PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
 
   # How many pages we need to be free on upper tier
@@ -180,17 +84,17 @@ function ft_mr_ss {
   export SH_ARENA_LAYOUT="SHARED_SITE_ARENAS"
   export SH_MAX_SITES_PER_ARENA="5000"
   DO_MEMRESERVE=true
-  ft $@
+  firsttouch
 }
 
-function ft_mr_ed {
+function firsttouch_memreserve_exclusive_device {
   # This just takes a percentage that should be left available on the upper tier
   RATIO=$(echo "${1}/100" | bc -l)
-  CANARY_CFG="ft_def:"
-  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/"
+  CANARY_CFG="firsttouch_exclusive_device:"
+  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/i0/"
 
   # This is in kilobytes
-  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --single="${CANARY_DIR}" --metric=peak_rss_kbytes`
+  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --metric=peak_rss_kbytes ${CANARY_DIR}`
   PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
 
   # How many pages we need to be free on upper tier
@@ -202,59 +106,17 @@ function ft_mr_ed {
   export SH_ARENA_LAYOUT="EXCLUSIVE_DEVICE_ARENAS"
   export SH_MAX_SITES_PER_ARENA="5000"
   DO_MEMRESERVE=true
-  ft $@
+  firsttouch
 }
 
-function ft_mr_bsl {
+function firsttouch_memreserve_default {
   # This just takes a percentage that should be left available on the upper tier
   RATIO=$(echo "${1}/100" | bc -l)
-  CANARY_CFG="ft_def:"
-  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/"
-
-  # How many pages we need to be free on upper tier
-  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --single="${CANARY_DIR}" --metric=peak_rss_kbytes`
-  PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
-  NUM_PAGES=$(echo "${PEAK_RSS} * ${RATIO} / 4" | bc)
-  NUM_BYTES_FLOAT=$(echo "${PEAK_RSS} * ${RATIO} * 1024" | bc)
-  NUM_BYTES=${NUM_BYTES_FLOAT%.*}
-
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="4194304" # 4MB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  DO_MEMRESERVE=true
-  ft $@
-}
-
-function ft_pnm_bsl {
-  # This just takes a percentage that should be left available on the upper tier
-  RATIO=$(echo "${1}/100" | bc -l)
-  CANARY_CFG="ft_def:"
-  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/"
-
-  # How many pages we need to be free on upper tier
-  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --single="${CANARY_DIR}" --metric=peak_rss_kbytes`
-  PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
-  NUM_PAGES=$(echo "${PEAK_RSS} * ${RATIO} / 4" | bc)
-  NUM_BYTES_FLOAT=$(echo "${PEAK_RSS} * ${RATIO} * 1024" | bc)
-  NUM_BYTES=${NUM_BYTES_FLOAT%.*}
-
-  export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="4194304" # 4MB threshold
-  export SH_MAX_SITES_PER_ARENA="5000"
-  DO_PER_NODE_MAX=true
-  ft $@
-}
-
-function ft_mr_def {
-  # This just takes a percentage that should be left available on the upper tier
-  RATIO=$(echo "${1}/100" | bc -l)
-  CANARY_CFG="ft_def:"
-  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/"
+  CANARY_CFG="firsttouch_default:"
+  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/i0/"
 
   # This is in kilobytes
-  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --single="${CANARY_DIR}" --metric=peak_rss_kbytes`
+  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --metric=peak_rss_kbytes ${CANARY_DIR}`
   PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
 
   # How many pages we need to be free on upper tier
@@ -264,5 +126,5 @@ function ft_mr_def {
 
   export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
   DO_MEMRESERVE=true
-  ft $@
+  firsttouch
 }

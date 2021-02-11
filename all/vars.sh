@@ -1,7 +1,8 @@
 #!/bin/bash
 
-export SICM_PREFIX="${HOME}/deps/patched"
-export UNPATCHED_PREFIX="${HOME}/deps/unpatched"
-export BENCH_DIR="${HOME}/benchmarks"
-export SCRIPTS_DIR="${HOME}/sicm_scripts"
-export RESULTS_DIR="${HOME}/results"
+export SICM_HOME="/home/hcoffey1/projects/"
+export SICM_PREFIX="${SICM_HOME}/deps/patched"
+export UNPATCHED_PREFIX="${SICM_HOME}/deps/unpatched"
+export BENCH_DIR="${SICM_HOME}/benchmarks"
+export SCRIPTS_DIR="${SICM_HOME}/sicm_scripts"
+export RESULTS_DIR="${SICM_HOME}/results"

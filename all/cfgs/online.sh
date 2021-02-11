@@ -3,56 +3,60 @@
 DO_MEMRESERVE=false
 DO_DEBUG=false
 MEMRESERVE_RATIO=""
-DO_PER_NODE_MAX=false
 
-function on_base {
-  FREQ="$1"
-  RATE="$2"
-  CAPACITY_SKIP_INTERVALS="$3"
-  ONLINE_SKIP_INTERVALS="$4"
-  PACKING_ALGO="$5"
-  
-  RATIO=$(echo "${MEMRESERVE_RATIO}/100" | bc -l)
-  CANARY_CFG="ft_def:"
-  CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/"
+function online_base {
+  CANARY_LAYOUT="$1"
+  FREQ="$2"
+  RATE="$3"
 
-  # This file is used to get the peak RSS
-  if [ ! -r "${CANARY_DIR}" ]; then
-    echo "ERROR: The file '${CANARY_DIR}' doesn't exist yet. Aborting."
-    exit
+  # First, get ready to do memreserve if applicable
+  if [ "${DO_MEMRESERVE}" = true ]; then
+    RATIO=$(echo "${MEMRESERVE_RATIO}/100" | bc -l)
+    if [[ "${CANARY_LAYOUT}" == "excl" ]]; then
+      CANARY_CFG="firsttouch_exclusive_device:"
+    elif [[ "${CANARY_LAYOUT}" == "share" ]]; then
+      CANARY_CFG="firsttouch_shared_site:"
+    elif [[ "${CANARY_LAYOUT}" == "def" ]]; then
+      CANARY_CFG="firsttouch_default:"
+    fi
+    CANARY_DIR="${BASEDIR}/../${CANARY_CFG}/i0/"
+
+    # This file is used to get the peak RSS
+    if [ ! -r "${CANARY_DIR}" ]; then
+      echo "ERROR: The file '${CANARY_DIR}' doesn't exist yet. Aborting."
+      exit
+    fi
+
+    # This is in kilobytes
+    PEAK_RSS=`${SCRIPTS_DIR}/all/stat --metric=peak_rss_kbytes ${CANARY_DIR}`
+    PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
+
+    # How many pages we need to be free on upper tier
+    NUM_PAGES=$(echo "${PEAK_RSS} * ${RATIO} / 4" | bc)
+    NUM_BYTES_FLOAT=$(echo "${PEAK_RSS} * ${RATIO} * 1024" | bc)
+    NUM_BYTES=${NUM_BYTES_FLOAT%.*}
+    echo "Reserving $NUM_PAGES pages."
   fi
-  
-  # This is in kilobytes
-  PEAK_RSS=`${SCRIPTS_DIR}/all/stat --single=${CANARY_DIR} --metric=peak_rss_kbytes`
-  PEAK_RSS_BYTES=$(echo "${PEAK_RSS} * 1024" | bc)
 
-  # How many pages we need to be free on upper tier
-  NUM_PAGES=$(echo "${PEAK_RSS} * ${RATIO} / 4" | bc)
-  NUM_BYTES_FLOAT=$(echo "${PEAK_RSS} * ${RATIO} * 1024" | bc)
-  NUM_BYTES=${NUM_BYTES_FLOAT%.*}
-
+  export SH_ARENA_LAYOUT="SHARED_SITE_ARENAS"
   export SH_MAX_SITES_PER_ARENA="5000"
   export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
 
   # Value profiling
   export SH_PROFILE_ALL="1"
-  export SH_MAX_SAMPLE_PAGES="2048"
+  export SH_MAX_SAMPLE_PAGES="512"
   export SH_SAMPLE_FREQ="${FREQ}"
   export SH_PROFILE_RATE_NSECONDS=$(echo "${RATE} * 1000000" | bc)
   export SH_PROFILE_ALL_EVENTS="MEM_LOAD_UOPS_LLC_MISS_RETIRED:LOCAL_DRAM,MEM_LOAD_UOPS_RETIRED:LOCAL_PMM"
   
-  export SH_PROFILE_IMC="skx_unc_imc0,skx_unc_imc1,skx_unc_imc2,skx_unc_imc3,skx_unc_imc4,skx_unc_imc5"
-  export SH_PROFILE_EXTENT_SIZE_SKIP_INTERVALS="${CAPACITY_SKIP_INTERVALS}"
-  export SH_PROFILE_RSS_SKIP_INTERVALS="${CAPACITY_SKIP_INTERVALS}"
+  # Size profiling
+  export SH_PROFILE_EXTENT_SIZE="1"
 
   # Turn on online
   export SH_PROFILE_ONLINE="1"
-  export SH_PROFILE_ONLINE_SKIP_INTERVALS="${ONLINE_SKIP_INTERVALS}"
-  export SH_PROFILE_ONLINE_SORT="value_per_weight"
-  export SH_PROFILE_ONLINE_PACKING_ALGO="${PACKING_ALGO}"
-  echo "SH_PROFILE_ONLINE_PACKING_ALGO=${SH_PROFILE_ONLINE_PACKING_ALGO}"
-  export SH_PROFILE_ONLINE_VALUE_THRESHOLD="10000000"
-  
+  export SH_PROFILE_ONLINE_WEIGHTS="1,5"
+  export SH_PROFILE_ONLINE_EVENTS="MEM_LOAD_UOPS_LLC_MISS_RETIRED:LOCAL_DRAM,MEM_LOAD_UOPS_RETIRED:LOCAL_PMM"
+
   export OMP_NUM_THREADS=`expr $OMP_NUM_THREADS - 1`
 
   eval "${PRERUN}"
@@ -62,86 +66,53 @@ function on_base {
     mkdir ${DIR}
     if [ "$DO_DEBUG" = true ]; then
       export SH_PROFILE_ONLINE_DEBUG_FILE="${DIR}/online.txt"
-      export SH_PRINT_PROFILE_INTERVALS="1"
     fi
     export SH_PROFILE_OUTPUT_FILE="${DIR}/profile.txt"
-    drop_caches_start
+    drop_caches
     if [ "$DO_MEMRESERVE" = true ]; then
       memreserve ${DIR} ${NUM_PAGES} ${SH_UPPER_NODE}
-      export SH_PROFILE_ONLINE_RESERVED_BYTES="${RESERVED_BYTES}"
     fi
-    drop_caches_start
     numastat -m &>> ${DIR}/numastat_before.txt
     numastat_background "${DIR}"
     pcm_background "${DIR}"
-    if [ "$DO_PER_NODE_MAX" = true ]; then
-      per_node_max ${NUM_BYTES} real &>> ${DIR}/stdout.txt
-    else
-      eval ${COMMAND} &> ${DIR}/stdout.txt
-    fi
+    eval "${COMMAND}" &>> ${DIR}/stdout.txt
     numastat_kill
     pcm_kill
     if [ "$DO_MEMRESERVE" = true ]; then
       memreserve_kill
     fi
-    drop_caches_end
   done
 }
 
-function on_pnm {
-  MEMRESERVE_RATIO="$6"
-  export DO_PER_NODE_MAX=true
-  on_base $@
+function online_memreserve {
+  DO_MEMRESERVE=true
+  MEMRESERVE_RATIO="$4"
+
+  online_base $@
 }
 
-function on_pnm_ski {
+function online_memreserve_orig {
+  export SH_PROFILE_ONLINE_STRAT_ORIG="1"
+  export SH_PROFILE_ONLINE_RECONF_WEIGHT_RATIO="$5"
+  export SH_PROFILE_ONLINE_HOT_INTERVALS="$6"
+
+  online_memreserve $@
+}
+
+function online_memreserve_orig_debug {
+  DO_DEBUG=true
+
+  online_memreserve_orig $@
+}
+
+function online_memreserve_ski {
   export SH_PROFILE_ONLINE_STRAT_SKI="1"
-  on_pnm $@
+
+  online_memreserve $@
 }
 
-# PROFILE_ALL with objmap
-function on_pnm_ski_all_objmap_bsl {
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="4194304"
-  export SH_PROFILE_ONLINE_VALUE="profile_all_total"
-  export SH_PROFILE_ONLINE_WEIGHT="profile_rss_peak"
-  export SH_PROFILE_OBJMAP="1"
-  on_pnm_ski $@
-}
-function on_mr_ski_all_rss_bsl_debug {
+function online_memreserve_ski_debug {
   DO_DEBUG=true
-  on_pnm_ski_all_objmap_bsl $@
-}
 
-# BWREL with objmap
-function on_pnm_ski_bwr_objmap_bsl {
-  export SH_ARENA_LAYOUT="BIG_SMALL_ARENAS"
-  export SH_BIG_SMALL_THRESHOLD="4194304"
-  export SH_PROFILE_BW="1"
-  export SH_PROFILE_BW_EVENTS="UNC_M_CAS_COUNT:RD"
-  export SH_PROFILE_BW_SKIP_INTERVALS="1"
-  export SH_PROFILE_BW_RELATIVE="1"
-  export SH_PROFILE_ONLINE_VALUE="profile_bw_relative_total"
-  export SH_PROFILE_ONLINE_WEIGHT="profile_objmap_peak"
-  export SH_PROFILE_OBJMAP="1"
-  on_pnm_ski $@
-}
-function on_pnm_ski_bwr_objmap_bsl_debug {
-  DO_DEBUG=true
-  on_pnm_ski_bwr_objmap_bsl $@
-}
-function on_pnm_ski_bwr_objmap_ss {
-  export SH_ARENA_LAYOUT="SHARED_SITE_ARENAS"
-  export SH_PROFILE_BW="1"
-  export SH_PROFILE_BW_EVENTS="UNC_M_CAS_COUNT:RD"
-  export SH_PROFILE_BW_SKIP_INTERVALS="1"
-  export SH_PROFILE_BW_RELATIVE="1"
-  export SH_PROFILE_ONLINE_VALUE="profile_bw_relative_total"
-  export SH_PROFILE_ONLINE_WEIGHT="profile_objmap_peak"
-  export SH_PROFILE_OBJMAP="1"
-  on_pnm_ski $@
-}
-function on_pnm_ski_bwr_objmap_ss_debug {
-  DO_DEBUG=true
-  on_pnm_ski_bwr_objmap_ss $@
+  online_memreserve_ski $@
 }

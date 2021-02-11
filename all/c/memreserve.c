@@ -120,8 +120,8 @@ size_t get_num_reserved_pages(int node) {
   /* Allocate all of the free memory on the node first */
   numa_node_size64(node, &freemem);
   if((freemem % pagesize) != 0) {
-    fprintf(stderr, "WARNING: The amount of free memory on the node isn't a multiple of the pagesize. Not sure what to do here, so continuing.\n");
-    //exit(1);
+    fprintf(stderr, "The amount of free memory on the node isn't a multiple of the pagesize. Not sure what to do here.\n");
+    exit(1);
   }
   num_pages = freemem / pagesize;
   data = valloc(freemem);
@@ -228,7 +228,6 @@ int main(int argc, char **argv)
   num_free_pages = freemem / pagesize;
   num_pages_to_allocate = num_free_pages - num_reserved_pages - arg_num_pages;
   data = valloc(num_pages_to_allocate * pagesize);
-  printf("Reserving %zu pages (%zu megabytes).\n", num_pages_to_allocate, num_pages_to_allocate * pagesize / 1024 / 1024);
   if(data == NULL) {
     fprintf(stderr, "Failed to allocate memory to reserve. Aborting.\n");
     exit(1);
