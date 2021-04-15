@@ -2,6 +2,9 @@
 
 export SMALL="./snap small.txt test.txt"
 export MEDIUM="./snap medium.txt test.txt"
+export small_COMMANDS=(
+"./snap small.txt test.txt"
+)
 export medium_COMMANDS=(
 "./snap medium.txt test.txt"
 )

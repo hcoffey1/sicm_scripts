@@ -3,9 +3,104 @@
 DO_MEMRESERVE=false
 CAPACITY_PROF_TYPE=""
 
+function control {
+
+  #SRC_COMPRESS_GUIDANCE_FILE="${PROFILE}"
+  #if [ ! -f "${SRC_COMPRESS_GUIDANCE_FILE}" ]; then
+  #  echo "ERROR: The file '${SRC_COMPRESS_GUIDANCE_FILE}' doesn't exist yet. Aborting."
+  #  exit
+  #fi
+
+  #cp "${SRC_COMPRESS_GUIDANCE_FILE}" "${BASEDIR}/compress_guidance.txt"
+  #export SH_COMPRESS_GUIDANCE_FILE="${BASEDIR}/compress_guidance.txt"
+  #export SH_ARENA_LAYOUT="EXCLUSIVE_COMPRESS_ARENAS"
+  #export SH_MAX_SITES_PER_ARENA="4096"
+  #export SH_DEFAULT_NODE="${SH_UPPER_NODE}"
+  #export SH_PROFILE_COMPRESS_STATS="1"
+  #export SH_PROFILE_RATE_NSECONDS=$(echo "1000 * 1000000" | bc)
+    
+  #echo Arguments $#
+  #if [ $# -eq 1 ]
+  #then
+  #    export SH_CGROUP_MEM_HIGH=$(echo "2^${MEM_HIGH}" | bc)
+  #    export SH_CGROUP_MEM_MAX=$(echo "2^${MEM_MAX}" | bc)
+  #else
+  #    export SH_CGROUP_MEM_HIGH=$(echo "${MEM_HIGH}" | bc)
+  #    export SH_CGROUP_MEM_MAX=$(echo "${MEM_MAX}" | bc)
+  #fi
+    
+  #echo "running compress config"
+  eval "${PRERUN}"
+  #unsetup_compress
+
+  # Run the iterations
+  for i in $(seq 0 $MAX_ITER); do
+    DIR="${BASEDIR}/i${i}"
+    mkdir ${DIR}
+
+    #export SH_COMPRESS_STATS_FILE=${DIR}/compress_stats.txt
+
+    drop_caches
+    if [ "$DO_MEMRESERVE" = true ]; then
+      memreserve ${DIR} ${NUM_PAGES} ${SH_UPPER_NODE}
+    fi
+    numastat -m &>> ${DIR}/numastat_before.txt
+    numastat_background "${DIR}"
+    pcm_background "${DIR}"
+    #setup_compress
+
+    #Set up bpftrace probes
+    #bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/bpftrace.log &
+    #bpft_pid=$!
+    bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/lz4.log &
+    bpft_pid=$!
+    bpftrace /home/hcoffey1/bpft/swap_alloc.bt > ${DIR}/swap_alloc.log &
+    bpft_swap_alloc_pid=$!
+    bpftrace /home/hcoffey1/bpft/swap_free.bt > ${DIR}/swap_free.log &
+    bpft_swap_free_pid=$!
+    bpftrace /home/hcoffey1/bpft/add_swap_cache.bt > ${DIR}/add_swap_cache.log &
+    bpft_add_swap_cache_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_free_entry.bt > ${DIR}/zswap_free_entry.log &
+    bpft_zswap_free_entry_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_fswp_load.bt > ${DIR}/zswap_fswp_load.log &
+    bpft_zswap_fswp_load_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_fswp_store.bt > ${DIR}/zswap_fswp_store.log &
+    bpft_zswap_fswp_store_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_wb_entry.bt > ${DIR}/zswap_wb_entry.log &
+    bpft_zswap_wb_entry_pid=$!
+
+    eval "${COMMAND}" &>> ${DIR}/run_sh_stdout.txt
+
+    #Terminate bpftrace probes
+    kill -2 $bpft_pid
+    kill -2 $bpft_swap_alloc_pid
+    kill -2 $bpft_swap_free_pid
+    kill -2 $bpft_add_swap_cache_pid
+    kill -2 $bpft_zswap_free_entry_pid
+    kill -2 $bpft_zswap_fswp_load_pid
+    kill -2 $bpft_zswap_fswp_store_pid
+    kill -2 $bpft_zswap_wb_entry_pid
+
+    #unsetup_compress
+    numastat_kill
+    pcm_kill
+    if [ "$DO_MEMRESERVE" = true ]; then
+      memreserve_kill
+    fi
+
+    COMMAND_VAR="${SIZE}_COMMANDS[@]"
+    BENCH_COMMANDS=("${!COMMAND_VAR}")
+    for RUN in $(seq 0 $(( ${#BENCH_COMMANDS[@]} - 1 )) ); do
+      cp "${BENCH_DIR}/${BENCH}/run/stdout${RUN}.txt" ${DIR}/
+      cp "${BENCH_DIR}/${BENCH}/run/stderr${RUN}.txt" ${DIR}/
+    done
+  done
+}
+
 function guided_compress {
   MEM_HIGH="$1"
   MEM_MAX=$(echo "${MEM_HIGH}" | bc)
+  export SH_PROFILE_COMPRESS_LIMIT_RATIO="$2"
 
   SRC_COMPRESS_GUIDANCE_FILE="${PROFILE}"
   if [ ! -f "${SRC_COMPRESS_GUIDANCE_FILE}" ]; then
@@ -22,7 +117,7 @@ function guided_compress {
   export SH_PROFILE_RATE_NSECONDS=$(echo "1000 * 1000000" | bc)
     
   echo Arguments $#
-  if [ $# -eq 1 ]
+  if [ $# -eq 2 ]
   then
       export SH_CGROUP_MEM_HIGH=$(echo "2^${MEM_HIGH}" | bc)
       export SH_CGROUP_MEM_MAX=$(echo "2^${MEM_MAX}" | bc)
@@ -52,13 +147,34 @@ function guided_compress {
     setup_compress
 
     #Set up bpftrace probes
-    bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/bpftrace.log &
+    bpftrace /home/hcoffey1/bpft/lz4.bt > ${DIR}/lz4.log &
     bpft_pid=$!
+    bpftrace /home/hcoffey1/bpft/swap_alloc.bt > ${DIR}/swap_alloc.log &
+    bpft_swap_alloc_pid=$!
+    bpftrace /home/hcoffey1/bpft/swap_free.bt > ${DIR}/swap_free.log &
+    bpft_swap_free_pid=$!
+    bpftrace /home/hcoffey1/bpft/add_swap_cache.bt > ${DIR}/add_swap_cache.log &
+    bpft_add_swap_cache_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_free_entry.bt > ${DIR}/zswap_free_entry.log &
+    bpft_zswap_free_entry_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_fswp_load.bt > ${DIR}/zswap_fswp_load.log &
+    bpft_zswap_fswp_load_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_fswp_store.bt > ${DIR}/zswap_fswp_store.log &
+    bpft_zswap_fswp_store_pid=$!
+    bpftrace /home/hcoffey1/bpft/zswap_wb_entry.bt > ${DIR}/zswap_wb_entry.log &
+    bpft_zswap_wb_entry_pid=$!
 
     eval "${COMMAND}" &>> ${DIR}/run_sh_stdout.txt
 
     #Terminate bpftrace probes
     kill -2 $bpft_pid
+    kill -2 $bpft_swap_alloc_pid
+    kill -2 $bpft_swap_free_pid
+    kill -2 $bpft_add_swap_cache_pid
+    kill -2 $bpft_zswap_free_entry_pid
+    kill -2 $bpft_zswap_fswp_load_pid
+    kill -2 $bpft_zswap_fswp_store_pid
+    kill -2 $bpft_zswap_wb_entry_pid
 
     unsetup_compress
     numastat_kill
